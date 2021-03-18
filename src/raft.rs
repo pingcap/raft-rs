@@ -2678,4 +2678,27 @@ impl<T: Storage> Raft<T> {
     pub fn uncommitted_size(&self) -> usize {
         self.uncommitted_state.uncommitted_size
     }
+
+    /// Free resources for all the raft node
+    pub fn free_resources_for_all(&mut self) {
+        for (_, pr) in self.mut_prs().iter_mut() {
+            pr.ins.shrink();
+        }
+    }
+
+    /// Free resources for raft node id
+    pub fn free_resources(&mut self, id: u64) {
+        let pr = match self.prs.get_mut(id) {
+            Some(pr) => pr,
+            None => {
+                debug!(
+                    self.logger,
+                    "no progress available for {}",
+                    id;
+                );
+                return;
+            }
+        };
+        pr.ins.shrink();
+    }
 }

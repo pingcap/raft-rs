@@ -122,6 +122,12 @@ impl Inflights {
         self.count = 0;
         self.start = 0;
     }
+
+    /// free buffer memory
+    #[inline]
+    pub fn shrink(&mut self) {
+        self.buffer.shrink_to_fit();
+    }
 }
 
 #[cfg(test)]
