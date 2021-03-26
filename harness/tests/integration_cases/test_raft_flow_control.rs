@@ -185,7 +185,10 @@ fn test_msg_app_flow_control_with_freeing_resources() {
 
     // force the progress to be in replicate state
     r.mut_prs().get_mut(2).unwrap().become_replicate();
-    // fill in the inflights window
+
+    // max_inflight = 256
+    // from 2 to 257, because index 1 is added when it becomes leader
+    // fill up all inflights
     for _ in 0..r.max_inflight {
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
             .expect("");
@@ -196,23 +199,14 @@ fn test_msg_app_flow_control_with_freeing_resources() {
 
     let cap = r.prs().get(2).unwrap().ins.cap();
 
-    // 1 is noop, 2 is the first proposal we just sent.
-    // so we start with 2.
-    //
-    // free all the inflights window
-    // In this case is 2 to 257
-    for tt in 2..=r.max_inflight + 2 {
-        // move forward the window
-        let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-        m.index = tt as u64;
-        r.step(m).expect("");
-        r.read_messages();
-    }
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.index = 257;
+    r.step(m).expect("");
+    r.read_messages();
 
     assert!(!r.prs().get(2).unwrap().ins.full());
     assert_eq!(r.prs().get(2).unwrap().ins.cap(), cap);
     r.free_resources();
-    // cap is 0
     assert_eq!(r.prs().get(2).unwrap().ins.cap(), 0);
     assert!(r.prs().get(2).unwrap().ins.full());
 
@@ -220,8 +214,7 @@ fn test_msg_app_flow_control_with_freeing_resources() {
     r.reallocate_resources();
     assert!(!r.prs().get(2).unwrap().ins.full());
 
-    // first proposal is noop
-    for _ in 0..r.max_inflight + 1 {
+    for _ in 0..r.max_inflight {
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
             .expect("");
         let ms = r.read_messages();
@@ -235,7 +228,7 @@ fn test_msg_app_flow_control_with_freeing_resources() {
 
     // free first index
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    m.index = 259;
+    m.index = 258;
     r.step(m).expect("");
     r.read_messages();
 
@@ -245,5 +238,4 @@ fn test_msg_app_flow_control_with_freeing_resources() {
     r.reallocate_resources();
     // cap = max_cap, count < cap
     assert!(!r.prs().get(2).unwrap().ins.full());
-
 }
