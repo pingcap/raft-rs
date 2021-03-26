@@ -2680,25 +2680,16 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Free resources for all the raft node
-    pub fn free_resources_for_all(&mut self) {
+    pub fn free_resources(&mut self) {
         for (_, pr) in self.mut_prs().iter_mut() {
-            pr.ins.shrink();
+            pr.ins.free_mem();
         }
     }
 
-    /// Free resources for raft node id
-    pub fn free_resources(&mut self, id: u64) {
-        let pr = match self.prs.get_mut(id) {
-            Some(pr) => pr,
-            None => {
-                debug!(
-                    self.logger,
-                    "no progress available for {}",
-                    id;
-                );
-                return;
-            }
-        };
-        pr.ins.shrink();
+    /// Reallocate resources for all the raft node
+    pub fn reallocate_resources(&mut self) {
+        for (_, pr) in self.mut_prs().iter_mut() {
+            pr.ins.reallocate();
+        }
     }
 }

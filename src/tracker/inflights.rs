@@ -24,6 +24,9 @@ pub struct Inflights {
 
     // ring buffer
     buffer: Vec<u64>,
+
+    // max capacity
+    max_cap: usize,
 }
 
 // The `buffer` must have it's capacity set correctly on clone, normally it does not.
@@ -35,17 +38,19 @@ impl Clone for Inflights {
             start: self.start,
             count: self.count,
             buffer,
+            max_cap: self.max_cap,
         }
     }
 }
 
 impl Inflights {
     /// Creates a new buffer for inflight messages.
-    pub fn new(cap: usize) -> Inflights {
+    pub fn new(max_cap: usize) -> Inflights {
         Inflights {
-            buffer: Vec::with_capacity(cap),
+            buffer: Vec::with_capacity(max_cap),
             start: 0,
             count: 0,
+            max_cap,
         }
     }
 
@@ -123,10 +128,21 @@ impl Inflights {
         self.start = 0;
     }
 
-    /// free buffer memory
+    /// free buffer memory by reassignment
     #[inline]
-    pub fn shrink(&mut self) {
-        self.buffer.shrink_to_fit();
+    pub fn free_mem(&mut self) {
+        let mut v = Vec::with_capacity(self.count);
+        for i in 0..self.count {
+            v.push(self.buffer[self.start + i])
+        }
+        self.buffer = v;
+        self.start = 0;
+    }
+
+    /// reallocate buffer memory
+    #[inline]
+    pub fn reallocate(&mut self) {
+        self.buffer.reserve(self.max_cap - self.cap());
     }
 }
 
@@ -145,6 +161,7 @@ mod tests {
             start: 0,
             count: 5,
             buffer: vec![0, 1, 2, 3, 4],
+            max_cap: 10,
         };
 
         assert_eq!(inflight, wantin);
@@ -157,6 +174,7 @@ mod tests {
             start: 0,
             count: 10,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            max_cap: 10,
         };
 
         assert_eq!(inflight, wantin2);
@@ -173,6 +191,7 @@ mod tests {
             start: 5,
             count: 5,
             buffer: vec![0, 0, 0, 0, 0, 0, 1, 2, 3, 4],
+            max_cap: 10,
         };
 
         assert_eq!(inflight2, wantin21);
@@ -185,6 +204,7 @@ mod tests {
             start: 5,
             count: 10,
             buffer: vec![5, 6, 7, 8, 9, 0, 1, 2, 3, 4],
+            max_cap: 10,
         };
 
         assert_eq!(inflight2, wantin22);
@@ -203,6 +223,7 @@ mod tests {
             start: 5,
             count: 5,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            max_cap: 10,
         };
 
         assert_eq!(inflight, wantin);
@@ -213,6 +234,7 @@ mod tests {
             start: 9,
             count: 1,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            max_cap: 10,
         };
 
         assert_eq!(inflight, wantin2);
@@ -227,6 +249,7 @@ mod tests {
             start: 3,
             count: 2,
             buffer: vec![10, 11, 12, 13, 14, 5, 6, 7, 8, 9],
+            max_cap: 10,
         };
 
         assert_eq!(inflight, wantin3);
@@ -237,6 +260,7 @@ mod tests {
             start: 5,
             count: 0,
             buffer: vec![10, 11, 12, 13, 14, 5, 6, 7, 8, 9],
+            max_cap: 10,
         };
 
         assert_eq!(inflight, wantin4);
@@ -255,6 +279,7 @@ mod tests {
             start: 1,
             count: 9,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            max_cap: 10,
         };
 
         assert_eq!(inflight, wantin);
