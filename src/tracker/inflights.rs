@@ -142,7 +142,7 @@ impl Inflights {
     /// reallocate buffer memory
     #[inline]
     pub fn reallocate(&mut self) {
-        self.buffer.reserve(self.max_cap - self.cap());
+        self.buffer.reserve_exact(self.max_cap - self.cap());
     }
 }
 

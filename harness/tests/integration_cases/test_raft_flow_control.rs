@@ -186,9 +186,9 @@ fn test_msg_app_flow_control_with_freeing_resources() {
     // force the progress to be in replicate state
     r.mut_prs().get_mut(2).unwrap().become_replicate();
 
-    // max_inflight = 256
-    // from 2 to 257, because index 1 is added when it becomes leader
-    // fill up all inflights
+    // r.max_inflight(256)
+    // 1 is noop, 2 is the first proposal we just sent.
+    // 2 to 257
     for _ in 0..r.max_inflight {
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
             .expect("");
@@ -199,6 +199,7 @@ fn test_msg_app_flow_control_with_freeing_resources() {
 
     let cap = r.prs().get(2).unwrap().ins.cap();
 
+    // move forward the window, clear up all
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
     m.index = 257;
     r.step(m).expect("");
@@ -214,6 +215,7 @@ fn test_msg_app_flow_control_with_freeing_resources() {
     r.reallocate_resources();
     assert!(!r.prs().get(2).unwrap().ins.full());
 
+    // fill in the inflights window again
     for _ in 0..r.max_inflight {
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
             .expect("");
@@ -226,16 +228,29 @@ fn test_msg_app_flow_control_with_freeing_resources() {
     r.free_resources();
     assert!(r.prs().get(2).unwrap().ins.full());
 
-    // free first index
+    // move forward the window (one)
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
     m.index = 258;
     r.step(m).expect("");
     r.read_messages();
-
     r.free_resources();
-    // cap is changed (max_cap - 1), so buffer is still full
+
+    // cap(r.max_inflight - 1), so buffer is still full
     assert!(r.prs().get(2).unwrap().ins.full());
     r.reallocate_resources();
-    // cap = max_cap, count < cap
     assert!(!r.prs().get(2).unwrap().ins.full());
+    r.step(new_message(1, 1, MessageType::MsgPropose, 1))
+        .expect("");
+    let ms = r.read_messages();
+    assert_eq!(ms.len(), 1);
+    assert!(r.prs().get(2).unwrap().ins.full());
+
+    for i in 0..3 {
+        r.step(new_message(1, 1, MessageType::MsgPropose, 1))
+            .expect("");
+        let ms = r.read_messages();
+        if !ms.is_empty() {
+            panic!("#{}: ms count = {}, want 0", i, ms.len());
+        }
+    }
 }
