@@ -28,7 +28,7 @@ pub const NO_LIMIT: u64 = u64::MAX;
 ///
 /// let template = {
 ///     let mut entry = Entry::default();
-///     entry.data = "*".repeat(100).into_bytes();
+///     entry.data = "*".repeat(100).into_bytes().into();
 ///     entry
 /// };
 ///
@@ -64,11 +64,10 @@ pub fn limit_size<T: PbMessage + Clone>(entries: &mut Vec<T>, max: Option<u64>) 
         .take_while(|&e| {
             if size == 0 {
                 size += u64::from(e.compute_size());
-                true
-            } else {
-                size += u64::from(e.compute_size());
-                size <= max
+                return true;
             }
+            size += u64::from(e.compute_size());
+            size <= max
         })
         .count();
 
@@ -155,4 +154,26 @@ impl<'a> Union<'a> {
         // Usually, second is empty.
         self.first.len() + self.second.len() - self.second.intersection(&self.first).count()
     }
+}
+
+/// Get the approximate size of entry
+#[inline]
+pub fn entry_approximate_size(e: &Entry) -> usize {
+    //  message Entry {
+    //      EntryType entry_type = 1;
+    //      uint64 term = 2;
+    //      uint64 index = 3;
+    //      bytes data = 4;
+    //      bytes context = 6;
+    //      bool sync_log = 5;(Deprecated)
+    // }
+    // Each field has tag(1 byte) if it's not default value.
+    // Tips: x bytes can represent a value up to 1 << x*7 - 1,
+    // So 1 byte => 127, 2 bytes => 16383, 3 bytes => 2097151.
+    // If entry_type is normal(default), in general, the size should
+    // be tag(4) + term(1) + index(2) + data(2) + context(1) = 10.
+    // If entry_type is conf change, in general, the size should be
+    // tag(5) + entry_type(1) + term(1) + index(2) + data(1) + context(1) = 11.
+    // We choose 12 in case of large index or large data for normal entry.
+    e.data.len() + e.context.len() + 12
 }
