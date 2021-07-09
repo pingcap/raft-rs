@@ -128,21 +128,17 @@ impl Inflights {
         self.start = 0;
     }
 
-    /// free buffer memory by reassignment
+    /// Free unused memory
     #[inline]
     pub fn free_mem(&mut self) {
-        let mut v = Vec::with_capacity(self.count);
-        for i in 0..self.count {
-            v.push(self.buffer[self.start + i])
+        // remove unused buffer, from start + count to the end of buffer
+        // ignore first index to self.start - 1
+        let len = self.buffer.len();
+        for _ in self.start + self.count..len {
+            self.buffer.pop();
         }
-        self.buffer = v;
-        self.start = 0;
-    }
 
-    /// reallocate buffer memory
-    #[inline]
-    pub fn reallocate(&mut self) {
-        self.buffer.reserve_exact(self.max_cap - self.cap());
+        self.buffer.shrink_to_fit()
     }
 }
 

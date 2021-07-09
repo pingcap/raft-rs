@@ -176,81 +176,23 @@ fn test_msg_app_flow_control_recv_heartbeat() {
     }
 }
 
-#[test]
-fn test_msg_app_flow_control_with_freeing_resources() {
-    let l = default_logger();
-    let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
-    r.become_candidate();
-    r.become_leader();
-
-    // force the progress to be in replicate state
-    r.mut_prs().get_mut(2).unwrap().become_replicate();
-
-    // r.max_inflight(256)
-    // 1 is noop, 2 is the first proposal we just sent.
-    // 2 to 257
-    for _ in 0..r.max_inflight {
-        r.step(new_message(1, 1, MessageType::MsgPropose, 1))
-            .expect("");
-        r.read_messages();
-    }
-
-    assert!(r.prs().get(2).unwrap().ins.full());
-
-    let cap = r.prs().get(2).unwrap().ins.cap();
-
-    // move forward the window, clear up all
-    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    m.index = 257;
-    r.step(m).expect("");
-    r.read_messages();
-
-    assert!(!r.prs().get(2).unwrap().ins.full());
-    assert_eq!(r.prs().get(2).unwrap().ins.cap(), cap);
-    r.free_resources();
-    assert_eq!(r.prs().get(2).unwrap().ins.cap(), 0);
-    assert!(r.prs().get(2).unwrap().ins.full());
-
-    // reallocate
-    r.reallocate_resources();
-    assert!(!r.prs().get(2).unwrap().ins.full());
-
-    // fill in the inflights window again
-    for _ in 0..r.max_inflight {
-        r.step(new_message(1, 1, MessageType::MsgPropose, 1))
-            .expect("");
-        let ms = r.read_messages();
-        assert_eq!(ms.len(), 1);
-    }
-    assert!(r.prs().get(2).unwrap().ins.full());
-
-    // buffer is full, so free does not reduce mem
-    r.free_resources();
-    assert!(r.prs().get(2).unwrap().ins.full());
-
-    // move forward the window (one)
-    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    m.index = 258;
-    r.step(m).expect("");
-    r.read_messages();
-    r.free_resources();
-
-    // cap(r.max_inflight - 1), so buffer is still full
-    assert!(r.prs().get(2).unwrap().ins.full());
-    r.reallocate_resources();
-    assert!(!r.prs().get(2).unwrap().ins.full());
-    r.step(new_message(1, 1, MessageType::MsgPropose, 1))
-        .expect("");
-    let ms = r.read_messages();
-    assert_eq!(ms.len(), 1);
-    assert!(r.prs().get(2).unwrap().ins.full());
-
-    for i in 0..3 {
-        r.step(new_message(1, 1, MessageType::MsgPropose, 1))
-            .expect("");
-        let ms = r.read_messages();
-        if !ms.is_empty() {
-            panic!("#{}: ms count = {}, want 0", i, ms.len());
-        }
-    }
-}
+// #[test]
+// fn test_msg_app_flow_control_with_freeing_resources() {
+//     let l = default_logger();
+//     let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
+//     r.become_candidate();
+//     r.become_leader();
+//
+//     // force the progress to be in replicate state
+//     r.mut_prs().get_mut(2).unwrap().become_replicate();
+//
+//     // send message from 2 to 1 for adding inflights
+//     for _ in 0..10 {
+//         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
+//             .expect("");
+//         r.read_messages();
+//     }
+//
+//     //
+//
+// }
