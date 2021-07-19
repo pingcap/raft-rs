@@ -126,6 +126,7 @@ impl Inflights {
     pub fn reset(&mut self) {
         self.count = 0;
         self.start = 0;
+        self.buffer = vec![];
     }
 
     /// Number of inflight messages.

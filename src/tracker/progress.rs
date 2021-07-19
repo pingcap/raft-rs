@@ -88,7 +88,6 @@ impl Progress {
         self.pending_request_snapshot = INVALID_INDEX;
         self.recent_active = false;
         self.ins.reset();
-        self.ins.maybe_free_buffer();
     }
 
     /// Changes the progress to a probe.
