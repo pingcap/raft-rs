@@ -88,6 +88,7 @@ impl Progress {
         self.pending_request_snapshot = INVALID_INDEX;
         self.recent_active = false;
         self.ins.reset();
+        self.ins.maybe_free_buffer();
     }
 
     /// Changes the progress to a probe.
@@ -239,11 +240,6 @@ impl Progress {
                 self.state
             ),
         }
-    }
-
-    /// Free resources
-    pub fn free_resources(&mut self) {
-        self.ins.free_mem()
     }
 }
 

@@ -1090,16 +1090,6 @@ impl<T: Storage> Raft<T> {
             "became follower at term {term}",
             term = self.term;
         );
-
-        let pr = match self.prs.get_mut(self.id) {
-            Some(pr) => pr,
-            None => {
-                debug!(self.logger, "no progress available for {}", self.id);
-                return;
-            }
-        };
-        // Currently, free_resources only support freeing inflight memory
-        pr.free_resources();
     }
 
     // TODO: revoke pub when there is a better way to test.
@@ -2844,5 +2834,14 @@ impl<T: Storage> Raft<T> {
     #[inline]
     pub fn uncommitted_size(&self) -> usize {
         self.uncommitted_state.uncommitted_size
+    }
+
+    /// A Raft leader allocates a vector with capacity `max_inflight_msgs` for every peer.
+    /// It takes a lot of memory if there are too many Raft groups. `maybe_free_inflight_buffers`
+    /// is used to free memory if necessary.
+    pub fn maybe_free_inflight_buffers(&mut self) {
+        for (_, pr) in self.mut_prs().iter_mut() {
+            pr.ins.maybe_free_buffer();
+        }
     }
 }
