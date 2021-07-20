@@ -175,3 +175,44 @@ fn test_msg_app_flow_control_recv_heartbeat() {
         r.read_messages();
     }
 }
+
+#[test]
+fn test_msg_app_flow_control_with_freeing_resources() {
+    let l = default_logger();
+    let mut r = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
+
+    r.become_candidate();
+    r.become_leader();
+    for (_, pr) in r.prs().iter() {
+        assert!(!pr.ins.buffer_is_allocated());
+    }
+
+    for i in 1..=3 {
+        // Force the progress to be in replicate state.
+        r.mut_prs().get_mut(i).unwrap().become_replicate();
+    }
+
+    r.step(new_message(1, 1, MessageType::MsgPropose, 1))
+        .unwrap();
+    for (&id, pr) in r.prs().iter() {
+        if id != 1 {
+            assert!(pr.ins.buffer_is_allocated());
+        }
+    }
+
+    let mut resp = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    resp.index = r.raft_log.last_index();
+    r.step(resp).unwrap();
+
+    // Test `maybe_free_inflight_buffers` works as expected.
+    r.maybe_free_inflight_buffers();
+    r.step(new_message(1, 1, MessageType::MsgPropose, 1))
+        .unwrap();
+    for (&id, pr) in r.prs().iter() {
+        if id == 2 {
+            assert_eq!(pr.ins.count(), 1);
+        } else if id == 3 {
+            assert_eq!(pr.ins.count(), 2);
+        }
+    }
+}
