@@ -107,17 +107,13 @@ impl UncommittedState {
     }
 
     pub fn maybe_increase_uncommitted_size(&mut self, ents: &[Entry]) -> bool {
-        // fast path
-        if self.is_no_limit() {
-            return true;
-        }
-
         let size: usize = ents.iter().map(|ent| ent.get_data().len()).sum();
 
         // 1. we should never drop an entry without any data(eg. leader election)
         // 2. we should allow at least one uncommitted entry
         // 3. add these entries will not cause size overlimit
-        if size == 0
+        if self.is_no_limit()
+            || size == 0
             || self.uncommitted_size == 0
             || size + self.uncommitted_size <= self.max_uncommitted_size
         {
@@ -130,7 +126,7 @@ impl UncommittedState {
 
     pub fn maybe_reduce_uncommitted_size(&mut self, ents: &[Entry]) -> bool {
         // fast path
-        if self.is_no_limit() || ents.is_empty() {
+        if ents.is_empty() {
             return true;
         }
 
@@ -1492,7 +1488,11 @@ impl<T: Storage> Raft<T> {
                 // ...and we believe the candidate is up to date.
                 if can_vote
                     && self.raft_log.is_up_to_date(m.index, m.log_term)
-                    && (m.index > self.raft_log.last_index() || self.priority <= get_priority(&m))
+                    // Priority only breaks ties between equally up-to-date logs.
+                    // A higher last term is newer even when the index is smaller.
+                    && (m.log_term > self.raft_log.last_term()
+                        || m.index > self.raft_log.last_index()
+                        || self.priority <= get_priority(&m))
                 {
                     // When responding to Msg{Pre,}Vote messages we include the term
                     // from the message, not the local term. To see why consider the
@@ -2941,7 +2941,9 @@ impl<T: Storage> Raft<T> {
         self.uncommitted_state.maybe_increase_uncommitted_size(ents)
     }
 
-    /// Return current uncommitted size recorded by uncommitted_state.
+    /// Return the current leader's tracked uncommitted data bytes, including
+    /// when the Raft admission limit is disabled. The counter resets on a new
+    /// leadership term; it does not include an inherited uncommitted tail.
     #[inline]
     pub fn uncommitted_size(&self) -> usize {
         self.uncommitted_state.uncommitted_size
@@ -2964,3 +2966,7 @@ impl<T: Storage> Raft<T> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "raft_uncommitted_tests.rs"]
+mod uncommitted_accounting_tests;

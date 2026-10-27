@@ -24,6 +24,8 @@ pub enum Error {
     ConfigInvalid(String),
     /// A protobuf message codec failed in some manner.
     #[error("protobuf codec error {0:?}")]
+    // Preserve the existing public error variant name for source compatibility.
+    #[allow(clippy::enum_variant_names)]
     CodecError(#[from] crate::protocompat::PbError),
     /// The node exists, but should not.
     #[error("The node {id} already exists in the {set} set.")]
@@ -43,6 +45,8 @@ pub enum Error {
     },
     /// ConfChange proposal is invalid.
     #[error("{0}")]
+    // Preserve the existing public error variant name for source compatibility.
+    #[allow(clippy::enum_variant_names)]
     ConfChangeError(String),
     /// The request snapshot is dropped.
     #[error("raft: request snapshot dropped")]

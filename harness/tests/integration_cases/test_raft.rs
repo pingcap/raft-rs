@@ -5334,6 +5334,107 @@ fn test_election_with_priority_log() {
     }
 }
 
+/// A voting preference must never prevent a strictly newer log from forming a
+/// quorum, or allow a stale log to win against a newer one.
+#[test]
+fn test_vote_log_freshness_takes_precedence_over_priority() {
+    let logger = default_logger();
+    for msg_type in [MessageType::MsgRequestVote, MessageType::MsgRequestPreVote] {
+        for (log_term, index, priority, reject) in [
+            (8, 100, -1, false),
+            (8, 200, -1, false),
+            (8, 300, -1, false),
+            (7, 201, -1, false),
+            (7, 200, -1, true),
+            (7, 200, 0, false),
+            (7, 200, 1, false),
+            (7, 199, 100, true),
+            (6, 1000, 100, true),
+        ] {
+            let storage = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
+            storage
+                .wl()
+                .append(
+                    &(1..=200)
+                        .map(|index| empty_entry(7, index))
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap();
+            let mut voter = new_test_raft(1, vec![1, 2, 3], 10, 1, storage, &logger);
+            voter.become_follower(9, INVALID_ID);
+            voter.set_priority(0);
+            let mut request = new_message(2, 1, msg_type, 0);
+            request.term = 9;
+            request.log_term = log_term;
+            request.index = index;
+            request.priority = priority;
+            voter.step(request).unwrap();
+            let responses = voter.read_messages();
+            assert_eq!(responses.len(), 1);
+            assert_eq!(responses[0].get_msg_type(), vote_resp_msg_type(msg_type));
+            assert_eq!(
+                responses[0].reject, reject,
+                "{msg_type:?}: log ({log_term}, {index}), priority {priority}"
+            );
+            assert_eq!(voter.term, 9);
+            assert_eq!(
+                voter.vote,
+                if !reject && msg_type == MessageType::MsgRequestVote {
+                    2
+                } else {
+                    INVALID_ID
+                }
+            );
+        }
+    }
+}
+
+/// Log freshness cannot bypass the one-vote-per-term rule. A future pre-vote
+/// may be granted without changing either the current term or the durable vote.
+#[test]
+fn test_newer_low_priority_log_preserves_vote_fences() {
+    let logger = default_logger();
+    let storage = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
+    storage
+        .wl()
+        .append(
+            &(1..=200)
+                .map(|index| empty_entry(7, index))
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+    let mut voter = new_test_raft(1, vec![1, 2, 3], 10, 1, storage, &logger);
+    voter.become_follower(9, INVALID_ID);
+    voter.vote = 3;
+    voter.set_priority(0);
+
+    let mut request = new_message(2, 1, MessageType::MsgRequestPreVote, 0);
+    request.term = 10;
+    request.log_term = 8;
+    request.index = 100;
+    request.priority = -1;
+    voter.step(request.clone()).unwrap();
+    assert!(!voter.read_messages()[0].reject);
+    assert_eq!(voter.term, 9);
+    assert_eq!(voter.vote, 3);
+
+    request.set_msg_type(MessageType::MsgRequestVote);
+    request.term = 9;
+    voter.step(request.clone()).unwrap();
+    assert!(voter.read_messages()[0].reject);
+    assert_eq!(voter.vote, 3);
+
+    // The vote for the newer candidate becomes valid in a new term and is
+    // idempotent when the same request is delivered again.
+    request.term = 10;
+    voter.step(request.clone()).unwrap();
+    assert!(!voter.read_messages()[0].reject);
+    voter.step(request).unwrap();
+    assert!(!voter.read_messages()[0].reject);
+    assert_eq!(voter.term, 10);
+    assert_eq!(voter.vote, 2);
+}
+
 /// test_election_after_change_priority verifies that a peer can win an election
 /// by raising its priority and lose election by lowering its priority.
 #[test]
